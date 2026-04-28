@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Editar | Pedlet Bicudo{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Edição</p>
+    <h1>Editar galeria</h1>
+    <p>Atualize dados, nomes e classificações.</p>
+  </div>
+</section>
+
+<form class="form-card" method="post" enctype="multipart/form-data">
+  <div class="form-grid">
+    <label>Título
+      <input type="text" name="titulo" required value="{{ galeria.titulo }}">
+    </label>
+    <label>Categoria
+      <input type="text" name="categoria" value="{{ galeria.categoria or '' }}">
+    </label>
+    <label>Turma
+      <input type="text" name="turma" value="{{ galeria.turma or '' }}">
+    </label>
+  </div>
+
+  <label>Descrição
+    <textarea name="descricao" rows="4">{{ galeria.descricao or '' }}</textarea>
+  </label>
+
+  <h2>Fotos atuais</h2>
+  <div class="edit-photos">
+    {% for foto in galeria.fotos %}
+      <div class="edit-photo">
+        <img src="{{ url_for('foto', foto_id=foto.id) }}" alt="{{ foto.nome }}">
+        <label>Nome
+          <input type="text" name="nome_{{ foto.id }}" value="{{ foto.nome or '' }}">
+        </label>
+        <label>Classificação
+          <input type="text" name="classificacao_{{ foto.id }}" value="{{ foto.classificacao or '' }}">
+        </label>
+        <button form="delete-foto-{{ foto.id }}" class="btn btn-danger" type="submit">Excluir foto</button>
+      </div>
+    {% else %}
+      <p>Nenhuma foto cadastrada.</p>
+    {% endfor %}
+  </div>
+
+  <div class="upload-box">
+    <h2>Adicionar novas fotos</h2>
+    <p>A galeria pode ter no máximo 6 fotos no total.</p>
+    <input type="file" name="fotos" accept="image/*" multiple>
+  </div>
+
+  <div class="actions">
+    <a class="btn btn-light" href="{{ url_for('detalhe', galeria_id=galeria.id) }}">Cancelar</a>
+    <button class="btn btn-primary" type="submit">Salvar alterações</button>
+  </div>
+</form>
+
+{% for foto in galeria.fotos %}
+<form id="delete-foto-{{ foto.id }}" method="post" action="{{ url_for('excluir_foto', foto_id=foto.id) }}"></form>
+{% endfor %}
+
+<form class="delete-gallery" method="post" action="{{ url_for('excluir_galeria', galeria_id=galeria.id) }}" onsubmit="return confirm('Tem certeza que deseja excluir esta galeria?');">
+  <button class="btn btn-danger" type="submit">Excluir galeria inteira</button>
+</form>
+{% endblock %}

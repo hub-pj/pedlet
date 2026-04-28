@@ -1,19 +1,15 @@
 services:
   - type: web
-    name: pedlet-bicudo
+    name: pedlet-flask-postgres
     runtime: python
-    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
-    healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
-      - key: MONGO_URI
+      - key: DATABASE_URL
         sync: false
-      - key: MONGO_DB
-        value: pedlet
       - key: SECRET_KEY
         generateValue: true
       - key: MAX_UPLOAD_MB
-        value: "30"
+        value: 30

@@ -1,78 +1,52 @@
-{% extends 'base.html' %}
-{% block title %}Mural de Galerias{% endblock %}
-
+{% extends "base.html" %}
+{% block title %}Mural | Pedlet Bicudo{% endblock %}
 {% block content %}
-<section class="hero-card mb-4">
-  <div class="row align-items-center g-4">
-    <div class="col-lg-8">
-      <span class="badge rounded-pill text-bg-warning mb-2">Galerias com até 6 fotos</span>
-      <h1 class="display-6 fw-bold text-white mb-2">Mural Pedlet de Evidências</h1>
-      <p class="text-white-50 mb-0">Organize fotos por galeria, turma, categoria e nome de cada evidência.</p>
-    </div>
-    <div class="col-lg-4 text-lg-end">
-      <a class="btn btn-warning btn-lg fw-bold shadow" href="{{ url_for('nova_galeria') }}">Criar nova galeria</a>
-    </div>
+<section class="hero">
+  <div>
+    <p class="eyebrow">Mural digital</p>
+    <h1>Galerias de evidências, projetos e atividades</h1>
+    <p>Cadastre galerias com até 6 fotos, classificações e nomes para organizar as evidências da escola.</p>
   </div>
-</section>
-
-<section class="filter-card mb-4">
-  <form class="row g-2 align-items-end" method="get">
-    <div class="col-md-6">
-      <label class="form-label text-white-50">Buscar</label>
-      <input type="text" name="q" value="{{ q }}" class="form-control form-control-lg" placeholder="Ex.: tutoria, 7º ano, robótica, Proati...">
-    </div>
-    <div class="col-md-4">
-      <label class="form-label text-white-50">Categoria</label>
-      <select name="categoria" class="form-select form-select-lg">
-        <option value="">Todas</option>
-        {% for cat in categorias %}
-          <option value="{{ cat }}" {% if categoria_atual == cat %}selected{% endif %}>{{ cat }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-md-2 d-grid">
-      <button class="btn btn-light btn-lg fw-bold">Filtrar</button>
-    </div>
+  <form class="search" method="get" action="{{ url_for('index') }}">
+    <input type="search" name="q" value="{{ q }}" placeholder="Buscar por título, turma, categoria ou nome...">
+    <button class="btn btn-dark" type="submit">Buscar</button>
   </form>
 </section>
 
-{% if galerias %}
-  <div class="masonry-grid">
-    {% for g in galerias %}
-      <article class="gallery-card">
-        <a href="{{ url_for('ver_galeria', galeria_id=g._id) }}" class="text-decoration-none">
-          <div class="cover-grid foto-count-{{ g.fotos|length }}">
-            {% for foto in g.fotos[:4] %}
-              <img src="{{ url_for('imagem', file_id=foto.file_id) }}" alt="{{ foto.nome }}">
-            {% endfor %}
-            {% if g.fotos|length > 4 %}
-              <div class="more-badge">+{{ g.fotos|length - 4 }}</div>
-            {% endif %}
-          </div>
-          <div class="p-3">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-              <h2 class="h5 fw-bold text-white mb-0">{{ g.titulo }}</h2>
-              <span class="pill">{{ g.fotos|length }} foto(s)</span>
-            </div>
-            <div class="d-flex flex-wrap gap-2 mb-2">
-              <span class="tag">{{ g.categoria }}</span>
-              {% if g.turma %}<span class="tag tag-muted">{{ g.turma }}</span>{% endif %}
-            </div>
-            {% if g.descricao %}
-              <p class="text-white-50 small mb-2">{{ g.descricao[:120] }}{% if g.descricao|length > 120 %}...{% endif %}</p>
-            {% endif %}
-            <p class="text-white-50 small mb-0">Criada em {{ g.created_at|data_br }}</p>
-          </div>
-        </a>
-      </article>
-    {% endfor %}
-  </div>
-{% else %}
-  <div class="empty-state text-center py-5">
-    <div class="empty-icon">🖼️</div>
-    <h2 class="text-white fw-bold">Nenhuma galeria encontrada</h2>
-    <p class="text-white-50">Crie a primeira galeria para começar seu mural de evidências.</p>
-    <a class="btn btn-warning fw-bold" href="{{ url_for('nova_galeria') }}">Criar galeria</a>
-  </div>
+{% if q %}
+  <p class="result-info">Resultado da busca por: <strong>{{ q }}</strong></p>
 {% endif %}
+
+<section class="grid">
+  {% for galeria in galerias %}
+    <article class="card">
+      <a class="cover" href="{{ url_for('detalhe', galeria_id=galeria.id) }}">
+        {% if galeria.fotos %}
+          <img src="{{ url_for('foto', foto_id=galeria.fotos[0].id) }}" alt="{{ galeria.titulo }}">
+        {% else %}
+          <div class="empty-cover">Sem foto</div>
+        {% endif %}
+        <span class="badge">{{ galeria.fotos|length }}/6 fotos</span>
+      </a>
+      <div class="card-body">
+        <div class="tags">
+          {% if galeria.categoria %}<span>{{ galeria.categoria }}</span>{% endif %}
+          {% if galeria.turma %}<span>{{ galeria.turma }}</span>{% endif %}
+        </div>
+        <h2>{{ galeria.titulo }}</h2>
+        <p>{{ galeria.descricao[:120] }}{% if galeria.descricao|length > 120 %}...{% endif %}</p>
+        <div class="card-actions">
+          <a class="btn btn-outline" href="{{ url_for('detalhe', galeria_id=galeria.id) }}">Abrir</a>
+          <a class="btn btn-light" href="{{ url_for('editar', galeria_id=galeria.id) }}">Editar</a>
+        </div>
+      </div>
+    </article>
+  {% else %}
+    <div class="empty-state">
+      <h2>Nenhuma galeria cadastrada ainda</h2>
+      <p>Comece criando uma galeria com fotos, nomes e classificações.</p>
+      <a class="btn btn-primary" href="{{ url_for('nova') }}">Criar primeira galeria</a>
+    </div>
+  {% endfor %}
+</section>
 {% endblock %}

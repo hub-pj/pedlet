@@ -1,307 +1,294 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
-import certifi
-from bson import ObjectId
-from bson.errors import InvalidId
 from dotenv import load_dotenv
-from flask import (
-    Flask,
-    Response,
-    abort,
-    flash,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
-from gridfs import GridFS
-from pymongo import MongoClient, DESCENDING
+from flask import Flask, Response, flash, redirect, render_template, request, url_for
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 load_dotenv()
 
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
-MAX_PHOTOS_PER_GALLERY = 6
+db = SQLAlchemy()
+
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 
 
-def create_app():
-    app = Flask(__name__)
-    app.secret_key = os.getenv("SECRET_KEY", "troque-esta-chave-em-producao")
-    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "30")) * 1024 * 1024
-    app.config["JSON_AS_ASCII"] = False
+def normalize_database_url(url: str | None) -> str | None:
+    """Ajusta a URL do Render para o driver psycopg do SQLAlchemy."""
+    if not url:
+        return None
+    url = url.strip()
+    if url.startswith("postgresql+psycopg://"):
+        return url
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    return url
 
-    mongo_uri = os.getenv("MONGO_URI", "").strip()
-    if not mongo_uri:
-        # No Render é melhor o app subir e mostrar o erro em /saude,
-        # em vez de quebrar durante a inicialização.
-        mongo_uri = "mongodb://localhost:27017"
 
-    db_name = os.getenv("MONGO_DB", "pedlet").strip() or "pedlet"
+def allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-    client = MongoClient(
-        mongo_uri,
-        serverSelectionTimeoutMS=8000,
-        connectTimeoutMS=8000,
-        socketTimeoutMS=8000,
-        tlsCAFile=certifi.where(),
+
+class Galeria(db.Model):
+    __tablename__ = "galerias"
+
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(160), nullable=False)
+    categoria = db.Column(db.String(100), nullable=True)
+    turma = db.Column(db.String(100), nullable=True)
+    descricao = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    fotos = db.relationship(
+        "Foto",
+        backref="galeria",
+        cascade="all, delete-orphan",
+        order_by="Foto.ordem.asc()",
+        lazy=True,
     )
-    db = client[db_name]
-    fs = GridFS(db)
-    galerias = db["galerias"]
-    categorias = db["categorias"]
-    indexes_ready = False
 
-    def allowed_file(filename: str) -> bool:
-        return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-    def ensure_indexes():
-        """Cria índices apenas quando o MongoDB estiver autenticado corretamente."""
-        nonlocal indexes_ready
-        if indexes_ready:
-            return True, None
+class Foto(db.Model):
+    __tablename__ = "fotos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    galeria_id = db.Column(db.Integer, db.ForeignKey("galerias.id"), nullable=False, index=True)
+    nome = db.Column(db.String(160), nullable=True)
+    classificacao = db.Column(db.String(120), nullable=True)
+    filename = db.Column(db.String(255), nullable=True)
+    mimetype = db.Column(db.String(80), nullable=False)
+    dados = db.Column(db.LargeBinary, nullable=False)
+    ordem = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+def create_app() -> Flask:
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "pedlet-dev")
+
+    database_url = normalize_database_url(os.environ.get("DATABASE_URL"))
+    if not database_url:
+        # Ajuda para teste local sem quebrar, mas no Render use PostgreSQL.
+        database_url = "sqlite:///pedlet_local.db"
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "30")) * 1024 * 1024
+
+    db.init_app(app)
+
+    app.config["DB_STARTUP_ERROR"] = None
+    with app.app_context():
         try:
-            client.admin.command("ping")
-            galerias.create_index([("created_at", DESCENDING)])
-            galerias.create_index([("titulo", "text"), ("categoria", "text"), ("turma", "text")])
-            categorias.create_index("nome", unique=True)
-            indexes_ready = True
-            return True, None
+            db.create_all()
         except Exception as exc:
-            return False, str(exc)
-
-    def get_categories():
-        ok, erro = ensure_indexes()
-        if not ok:
-            return []
-        try:
-            nomes = [c.get("nome") for c in categorias.find().sort("nome", 1)]
-            return [n for n in nomes if n]
-        except Exception:
-            return []
-
-    def parse_object_id(value: str):
-        try:
-            return ObjectId(value)
-        except (InvalidId, TypeError):
-            abort(404)
-
-    def render_db_error(erro: str):
-        return render_template("erro_banco.html", erro=erro), 500
-
-    @app.context_processor
-    def inject_globals():
-        return {
-            "max_photos": MAX_PHOTOS_PER_GALLERY,
-            "ano_atual": datetime.now().year,
-        }
+            # Não derruba o servidor no Render. A rota /saude mostra o erro real do banco.
+            app.config["DB_STARTUP_ERROR"] = str(exc)
 
     @app.route("/healthz")
     def healthz():
-        # Usado pelo Render para saber se o Flask subiu.
-        # Não testa MongoDB, porque senha errada não deve derrubar o deploy.
-        return {"status": "ok", "app": "pedlet"}
+        return {"status": "ok", "app": "pedlet-flask-postgres"}
 
     @app.route("/saude")
     def saude():
         try:
-            client.admin.command("ping")
-            ok, erro = ensure_indexes()
-            if not ok:
-                return {"status": "erro", "mongodb": "falha ao criar indices", "mensagem": erro}, 500
-            return {"status": "ok", "mongodb": "conectado", "banco": db_name}
+            total = Galeria.query.count()
+            return {
+                "status": "ok",
+                "postgresql": "conectado",
+                "galerias": total,
+            }
         except Exception as exc:
-            return {"status": "erro", "mongodb": "desconectado", "mensagem": str(exc)}, 500
+            return {
+                "status": "erro",
+                "postgresql": "falha na conexão",
+                "erro": str(exc),
+            }, 500
 
     @app.route("/")
     def index():
-        ok, erro = ensure_indexes()
-        if not ok:
-            return render_db_error(erro)
+        if app.config.get("DB_STARTUP_ERROR"):
+            return render_template(
+                "erro.html",
+                titulo="Banco de dados não conectado",
+                mensagem="Confira a variável DATABASE_URL no Render e teste novamente a rota /saude.",
+                detalhe=app.config["DB_STARTUP_ERROR"],
+            ), 500
 
         q = request.args.get("q", "").strip()
-        categoria = request.args.get("categoria", "").strip()
-
-        filtro = {}
-        if categoria:
-            filtro["categoria"] = categoria
+        query = Galeria.query
         if q:
-            filtro["$or"] = [
-                {"titulo": {"$regex": q, "$options": "i"}},
-                {"turma": {"$regex": q, "$options": "i"}},
-                {"categoria": {"$regex": q, "$options": "i"}},
-                {"descricao": {"$regex": q, "$options": "i"}},
-                {"fotos.nome": {"$regex": q, "$options": "i"}},
-            ]
-
-        try:
-            docs = list(galerias.find(filtro).sort("created_at", DESCENDING))
-        except Exception as exc:
-            return render_db_error(str(exc))
-
-        return render_template(
-            "index.html",
-            galerias=docs,
-            categorias=get_categories(),
-            q=q,
-            categoria_atual=categoria,
-        )
+            like = f"%{q}%"
+            query = query.outerjoin(Foto).filter(
+                or_(
+                    Galeria.titulo.ilike(like),
+                    Galeria.categoria.ilike(like),
+                    Galeria.turma.ilike(like),
+                    Galeria.descricao.ilike(like),
+                    Foto.nome.ilike(like),
+                    Foto.classificacao.ilike(like),
+                )
+            ).distinct()
+        galerias = query.order_by(Galeria.created_at.desc()).all()
+        return render_template("index.html", galerias=galerias, q=q)
 
     @app.route("/nova", methods=["GET", "POST"])
-    def nova_galeria():
-        ok, erro = ensure_indexes()
-        if not ok:
-            return render_db_error(erro)
+    def nova():
+        if app.config.get("DB_STARTUP_ERROR"):
+            return render_template(
+                "erro.html",
+                titulo="Banco de dados não conectado",
+                mensagem="Confira a variável DATABASE_URL no Render e teste novamente a rota /saude.",
+                detalhe=app.config["DB_STARTUP_ERROR"],
+            ), 500
 
-        if request.method == "GET":
-            return render_template("nova.html", categorias=get_categories())
+        if request.method == "POST":
+            titulo = request.form.get("titulo", "").strip()
+            categoria = request.form.get("categoria", "").strip()
+            turma = request.form.get("turma", "").strip()
+            descricao = request.form.get("descricao", "").strip()
 
-        titulo = request.form.get("titulo", "").strip()
-        categoria = request.form.get("categoria", "").strip()
-        nova_categoria = request.form.get("nova_categoria", "").strip()
-        turma = request.form.get("turma", "").strip()
-        descricao = request.form.get("descricao", "").strip()
+            if not titulo:
+                flash("Informe o título da galeria.", "erro")
+                return redirect(url_for("nova"))
 
-        if nova_categoria:
-            categoria = nova_categoria
+            arquivos = request.files.getlist("fotos")
+            arquivos_validos = [a for a in arquivos if a and a.filename]
 
-        if not titulo:
-            flash("Informe o título da galeria.", "danger")
-            return redirect(url_for("nova_galeria"))
+            if len(arquivos_validos) > 6:
+                flash("Cada galeria aceita no máximo 6 fotos.", "erro")
+                return redirect(url_for("nova"))
 
-        fotos_salvas = []
-        arquivos_recebidos = 0
-        gridfs_ids_salvos = []
+            galeria = Galeria(
+                titulo=titulo,
+                categoria=categoria,
+                turma=turma,
+                descricao=descricao,
+            )
+            db.session.add(galeria)
+            db.session.flush()
 
-        try:
-            for posicao in range(1, MAX_PHOTOS_PER_GALLERY + 1):
-                arquivo = request.files.get(f"foto{posicao}")
-                nome_foto = request.form.get(f"nome{posicao}", "").strip()
+            nomes = request.form.getlist("nome_foto")
+            classificacoes = request.form.getlist("classificacao_foto")
 
-                if not arquivo or not arquivo.filename:
+            for idx, arquivo in enumerate(arquivos_validos):
+                if not allowed_file(arquivo.filename):
+                    db.session.rollback()
+                    flash("Use apenas imagens PNG, JPG, JPEG, WEBP ou GIF.", "erro")
+                    return redirect(url_for("nova"))
+
+                dados = arquivo.read()
+                if not dados:
                     continue
 
-                arquivos_recebidos += 1
+                foto = Foto(
+                    galeria_id=galeria.id,
+                    nome=(nomes[idx].strip() if idx < len(nomes) else ""),
+                    classificacao=(classificacoes[idx].strip() if idx < len(classificacoes) else ""),
+                    filename=secure_filename(arquivo.filename),
+                    mimetype=arquivo.mimetype or "application/octet-stream",
+                    dados=dados,
+                    ordem=idx,
+                )
+                db.session.add(foto)
+
+            db.session.commit()
+            flash("Galeria criada com sucesso!", "sucesso")
+            return redirect(url_for("detalhe", galeria_id=galeria.id))
+
+        return render_template("nova.html")
+
+    @app.route("/galeria/<int:galeria_id>")
+    def detalhe(galeria_id: int):
+        galeria = Galeria.query.get_or_404(galeria_id)
+        return render_template("detalhe.html", galeria=galeria)
+
+    @app.route("/galeria/<int:galeria_id>/editar", methods=["GET", "POST"])
+    def editar(galeria_id: int):
+        galeria = Galeria.query.get_or_404(galeria_id)
+
+        if request.method == "POST":
+            galeria.titulo = request.form.get("titulo", "").strip() or galeria.titulo
+            galeria.categoria = request.form.get("categoria", "").strip()
+            galeria.turma = request.form.get("turma", "").strip()
+            galeria.descricao = request.form.get("descricao", "").strip()
+
+            for foto in galeria.fotos:
+                foto.nome = request.form.get(f"nome_{foto.id}", "").strip()
+                foto.classificacao = request.form.get(f"classificacao_{foto.id}", "").strip()
+
+            atuais = len(galeria.fotos)
+            novos = [a for a in request.files.getlist("fotos") if a and a.filename]
+            if atuais + len(novos) > 6:
+                flash("A galeria pode ter no máximo 6 fotos no total.", "erro")
+                return redirect(url_for("editar", galeria_id=galeria.id))
+
+            for idx, arquivo in enumerate(novos, start=atuais):
                 if not allowed_file(arquivo.filename):
-                    flash(f"Arquivo inválido na foto {posicao}. Use PNG, JPG, JPEG, GIF ou WEBP.", "danger")
-                    return redirect(url_for("nova_galeria"))
-
-                filename = secure_filename(arquivo.filename)
-                content_type = arquivo.content_type or "application/octet-stream"
-                file_id = fs.put(
-                    arquivo.stream,
-                    filename=filename,
-                    content_type=content_type,
-                    metadata={
-                        "titulo_galeria": titulo,
-                        "nome_foto": nome_foto,
-                        "posicao": posicao,
-                        "created_at": datetime.now(timezone.utc),
-                    },
+                    flash("Use apenas imagens PNG, JPG, JPEG, WEBP ou GIF.", "erro")
+                    return redirect(url_for("editar", galeria_id=galeria.id))
+                dados = arquivo.read()
+                if not dados:
+                    continue
+                foto = Foto(
+                    galeria_id=galeria.id,
+                    nome="",
+                    classificacao="",
+                    filename=secure_filename(arquivo.filename),
+                    mimetype=arquivo.mimetype or "application/octet-stream",
+                    dados=dados,
+                    ordem=idx,
                 )
-                gridfs_ids_salvos.append(file_id)
-                fotos_salvas.append(
-                    {
-                        "file_id": file_id,
-                        "filename": filename,
-                        "content_type": content_type,
-                        "nome": nome_foto or f"Foto {posicao}",
-                        "posicao": posicao,
-                    }
-                )
+                db.session.add(foto)
 
-            if arquivos_recebidos == 0:
-                flash("Adicione pelo menos uma foto.", "danger")
-                return redirect(url_for("nova_galeria"))
+            db.session.commit()
+            flash("Galeria atualizada com sucesso!", "sucesso")
+            return redirect(url_for("detalhe", galeria_id=galeria.id))
 
-            doc = {
-                "titulo": titulo,
-                "categoria": categoria or "Sem categoria",
-                "turma": turma,
-                "descricao": descricao,
-                "fotos": fotos_salvas,
-                "created_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
-            }
-            resultado = galerias.insert_one(doc)
+        return render_template("editar.html", galeria=galeria)
 
-            if categoria:
-                categorias.update_one(
-                    {"nome": categoria},
-                    {"$setOnInsert": {"nome": categoria, "created_at": datetime.now(timezone.utc)}},
-                    upsert=True,
-                )
-        except Exception as exc:
-            # Se falhar depois de subir fotos, tenta limpar para não deixar arquivo solto no GridFS.
-            for file_id in gridfs_ids_salvos:
-                try:
-                    fs.delete(file_id)
-                except Exception:
-                    pass
-            return render_db_error(str(exc))
+    @app.post("/foto/<int:foto_id>/excluir")
+    def excluir_foto(foto_id: int):
+        foto = Foto.query.get_or_404(foto_id)
+        galeria_id = foto.galeria_id
+        db.session.delete(foto)
+        db.session.commit()
+        flash("Foto excluída.", "sucesso")
+        return redirect(url_for("editar", galeria_id=galeria_id))
 
-        flash("Galeria criada com sucesso!", "success")
-        return redirect(url_for("ver_galeria", galeria_id=str(resultado.inserted_id)))
-
-    @app.route("/galeria/<galeria_id>")
-    def ver_galeria(galeria_id):
-        ok, erro = ensure_indexes()
-        if not ok:
-            return render_db_error(erro)
-
-        oid = parse_object_id(galeria_id)
-        galeria = galerias.find_one({"_id": oid})
-        if not galeria:
-            abort(404)
-        return render_template("galeria.html", galeria=galeria)
-
-    @app.route("/galeria/<galeria_id>/excluir", methods=["POST"])
-    def excluir_galeria(galeria_id):
-        ok, erro = ensure_indexes()
-        if not ok:
-            return render_db_error(erro)
-
-        oid = parse_object_id(galeria_id)
-        galeria = galerias.find_one({"_id": oid})
-        if not galeria:
-            abort(404)
-
-        for foto in galeria.get("fotos", []):
-            try:
-                fs.delete(foto["file_id"])
-            except Exception:
-                pass
-
-        galerias.delete_one({"_id": oid})
-        flash("Galeria excluída com sucesso.", "success")
+    @app.post("/galeria/<int:galeria_id>/excluir")
+    def excluir_galeria(galeria_id: int):
+        galeria = Galeria.query.get_or_404(galeria_id)
+        db.session.delete(galeria)
+        db.session.commit()
+        flash("Galeria excluída com sucesso.", "sucesso")
         return redirect(url_for("index"))
 
-    @app.route("/imagem/<file_id>")
-    def imagem(file_id):
-        oid = parse_object_id(file_id)
-        try:
-            grid_file = fs.get(oid)
-        except Exception:
-            abort(404)
-
-        return Response(
-            grid_file.read(),
-            mimetype=grid_file.content_type or "application/octet-stream",
-            headers={"Cache-Control": "public, max-age=86400"},
-        )
+    @app.route("/foto/<int:foto_id>")
+    def foto(foto_id: int):
+        foto = Foto.query.get_or_404(foto_id)
+        return Response(foto.dados, mimetype=foto.mimetype)
 
     @app.errorhandler(413)
-    def arquivo_muito_grande(_):
-        flash("Arquivo muito grande. Reduza as imagens ou aumente MAX_UPLOAD_MB no .env.", "danger")
-        return redirect(url_for("nova_galeria"))
+    def arquivo_grande(_error):
+        return render_template(
+            "erro.html",
+            titulo="Arquivo muito grande",
+            mensagem="Reduza o tamanho das imagens ou aumente MAX_UPLOAD_MB nas variáveis do Render.",
+        ), 413
 
-    @app.template_filter("data_br")
-    def data_br(value):
-        if not value:
-            return ""
-        if isinstance(value, datetime):
-            return value.strftime("%d/%m/%Y %H:%M")
-        return str(value)
+    @app.errorhandler(500)
+    def erro_500(error):
+        return render_template(
+            "erro.html",
+            titulo="Erro interno",
+            mensagem="Verifique a variável DATABASE_URL e os logs do Render.",
+            detalhe=str(error),
+        ), 500
 
     return app
 
@@ -309,5 +296,5 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    debug = os.getenv("FLASK_DEBUG", "0") == "1"
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=debug)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)

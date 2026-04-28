@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ galeria.titulo }} | Pedlet Bicudo{% endblock %}
+{% block content %}
+<section class="page-head detail-head">
+  <div>
+    <p class="eyebrow">Galeria</p>
+    <h1>{{ galeria.titulo }}</h1>
+    <p>{{ galeria.descricao }}</p>
+    <div class="tags big">
+      {% if galeria.categoria %}<span>{{ galeria.categoria }}</span>{% endif %}
+      {% if galeria.turma %}<span>{{ galeria.turma }}</span>{% endif %}
+      <span>{{ galeria.fotos|length }}/6 fotos</span>
+    </div>
+  </div>
+  <div class="actions inline">
+    <a class="btn btn-light" href="{{ url_for('index') }}">Voltar</a>
+    <a class="btn btn-primary" href="{{ url_for('editar', galeria_id=galeria.id) }}">Editar</a>
+  </div>
+</section>
+
+<section class="photo-grid">
+  {% for foto in galeria.fotos %}
+    <article class="photo-card">
+      <img src="{{ url_for('foto', foto_id=foto.id) }}" alt="{{ foto.nome or galeria.titulo }}">
+      <div>
+        <h2>{{ foto.nome or 'Foto sem nome' }}</h2>
+        <p>{{ foto.classificacao or 'Sem classificação' }}</p>
+      </div>
+    </article>
+  {% else %}
+    <div class="empty-state"><h2>Esta galeria ainda não possui fotos.</h2></div>
+  {% endfor %}
+</section>
+{% endblock %}
