@@ -3,6 +3,29 @@
 Sistema estilo mural/Pedlet para cadastrar galerias com até 6 fotos por galeria.
 As fotos são salvas diretamente no PostgreSQL em campo BYTEA, então não dependem da pasta local do Render.
 
+## Correção desta versão
+
+Esta versão corrige o erro:
+
+```text
+No matching distribution found for psycopg-binary==3.2.3
+```
+
+Agora o projeto usa:
+
+```text
+psycopg[binary]==3.2.13
+PYTHON_VERSION=3.12.8
+```
+
+Se o log do Render mostrar `cp314`, significa que ele está usando Python 3.14. Nesse caso, no painel do Render, vá em **Environment** e ajuste:
+
+```env
+PYTHON_VERSION=3.12.8
+```
+
+Depois clique em **Manual Deploy > Clear build cache & deploy**.
+
 ## Rodar localmente no Windows
 
 ```powershell
@@ -27,7 +50,7 @@ Observação: se estiver usando a URL interna do PostgreSQL do Render, ela geral
 Build Command:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install --upgrade pip && pip install -r requirements.txt
 ```
 
 Start Command:
@@ -40,7 +63,7 @@ Environment Variables:
 
 ```env
 DATABASE_URL=postgresql://pedlet_user:SUA_SENHA@SEU_HOST/pedlet
-SECRET_KEY=troque-essa-chave
+SECRET_KEY=bicudo2026
 MAX_UPLOAD_MB=30
 PYTHON_VERSION=3.12.8
 ```
@@ -58,6 +81,10 @@ Verifica se o app Flask está no ar.
 ```
 
 Verifica se o PostgreSQL conectou.
+
+## Tema escuro
+
+Esta versão usa visual escuro moderno: fundo preto/azulado, cards escuros, campos legíveis e botões com destaque.
 
 ## Recursos
 
