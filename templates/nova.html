@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Nova Galeria{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-xl-10">
+    <div class="page-header mb-4">
+      <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none">← Voltar ao mural</a>
+      <h1 class="text-white fw-bold mt-2">Criar nova galeria</h1>
+      <p class="text-white-50 mb-0">Adicione de 1 até 6 fotos e coloque um nome/classificação para cada imagem.</p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="form-card">
+      <div class="row g-3 mb-4">
+        <div class="col-md-8">
+          <label class="form-label">Título da galeria *</label>
+          <input type="text" name="titulo" class="form-control form-control-lg" placeholder="Ex.: Tutoria - Evidências da semana" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Turma</label>
+          <input type="text" name="turma" class="form-control form-control-lg" placeholder="Ex.: 7º A, 1º EM">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Categoria existente</label>
+          <select name="categoria" class="form-select form-select-lg">
+            <option value="">Escolher categoria</option>
+            {% for cat in categorias %}
+              <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Ou criar nova categoria</label>
+          <input type="text" name="nova_categoria" class="form-control form-control-lg" placeholder="Ex.: Tutoria, Robótica, PROATI">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Descrição</label>
+          <textarea name="descricao" class="form-control" rows="3" placeholder="Descreva o objetivo da galeria, evidências, atividade realizada..."></textarea>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+        <div>
+          <h2 class="h4 text-white fw-bold mb-1">Fotos da galeria</h2>
+          <p class="text-white-50 mb-0">Máximo de 6 imagens por galeria.</p>
+        </div>
+        <span class="counter-badge"><span id="contadorFotos">0</span>/6 selecionadas</span>
+      </div>
+
+      <div class="photo-upload-grid">
+        {% for i in range(1, 7) %}
+          <div class="upload-card">
+            <div class="upload-number">{{ i }}</div>
+            <label class="form-label">Foto {{ i }}</label>
+            <input type="file" name="foto{{ i }}" class="form-control foto-input" accept="image/png,image/jpeg,image/gif,image/webp">
+            <label class="form-label mt-3">Nome/Classificação</label>
+            <input type="text" name="nome{{ i }}" class="form-control" placeholder="Ex.: Participação, Grupo 1, Experimento...">
+            <div class="preview-box mt-3">
+              <span>Prévia</span>
+              <img class="preview-img d-none" alt="Prévia da foto {{ i }}">
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="d-flex flex-column flex-md-row gap-2 justify-content-end mt-4">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-lg">Cancelar</a>
+        <button type="submit" class="btn btn-warning btn-lg fw-bold">Salvar galeria</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

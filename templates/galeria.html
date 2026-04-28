@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}{{ galeria.titulo }}{% endblock %}
+
+{% block content %}
+<div class="page-header mb-4">
+  <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none">← Voltar ao mural</a>
+  <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mt-2">
+    <div>
+      <h1 class="text-white fw-bold mb-2">{{ galeria.titulo }}</h1>
+      <div class="d-flex flex-wrap gap-2">
+        <span class="tag">{{ galeria.categoria }}</span>
+        {% if galeria.turma %}<span class="tag tag-muted">{{ galeria.turma }}</span>{% endif %}
+        <span class="tag tag-muted">{{ galeria.fotos|length }} foto(s)</span>
+        <span class="tag tag-muted">{{ galeria.created_at|data_br }}</span>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('excluir_galeria', galeria_id=galeria._id) }}" onsubmit="return confirm('Tem certeza que deseja excluir esta galeria e suas fotos?')">
+      <button class="btn btn-outline-danger btn-lg">Excluir galeria</button>
+    </form>
+  </div>
+  {% if galeria.descricao %}
+    <p class="text-white-50 mt-3 mb-0 fs-5">{{ galeria.descricao }}</p>
+  {% endif %}
+</div>
+
+<div class="detail-grid">
+  {% for foto in galeria.fotos %}
+    <article class="photo-card">
+      <a href="{{ url_for('imagem', file_id=foto.file_id) }}" target="_blank">
+        <img src="{{ url_for('imagem', file_id=foto.file_id) }}" alt="{{ foto.nome }}">
+      </a>
+      <div class="p-3">
+        <h2 class="h5 text-white fw-bold mb-1">{{ foto.nome }}</h2>
+        <p class="text-white-50 small mb-0">Arquivo: {{ foto.filename }}</p>
+      </div>
+    </article>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Erro no MongoDB{% endblock %}
+
+{% block content %}
+<section class="hero-card mb-4">
+  <span class="badge rounded-pill text-bg-danger mb-2">MongoDB Atlas</span>
+  <h1 class="display-6 fw-bold text-white mb-2">Não foi possível conectar ao banco</h1>
+  <p class="text-white-50 mb-0">O Flask está funcionando, mas a conexão do MongoDB precisa ser corrigida.</p>
+</section>
+
+<div class="form-card">
+  <h2 class="h4 text-white fw-bold">O que conferir</h2>
+  <ol class="text-white-50 fs-5">
+    <li>Confira usuário e senha em <strong>Database Access</strong> no MongoDB Atlas.</li>
+    <li>Se a senha tiver <strong>@</strong>, use <strong>%40</strong> dentro da variável <code>MONGO_URI</code>.</li>
+    <li>Em <strong>Network Access</strong>, libere <code>0.0.0.0/0</code> para testar no Render.</li>
+    <li>No Render, salve novamente as variáveis e clique em <strong>Manual Deploy</strong>.</li>
+  </ol>
+
+  <div class="alert alert-dark border border-danger text-danger-emphasis mt-3">
+    <strong>Erro retornado:</strong><br>
+    <code>{{ erro }}</code>
+  </div>
+
+  <a href="{{ url_for('saude') }}" class="btn btn-warning fw-bold">Testar /saude</a>
+</div>
+{% endblock %}
